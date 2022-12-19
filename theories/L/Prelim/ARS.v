@@ -13,78 +13,86 @@ End ARSNotations.
 Import ARSNotations.
 
 (* Relational composition *)
+Require Import Relations.
 
 Definition rcomp X Y Z (R : X -> Y -> Prop) (S : Y -> Z -> Prop) 
 : X -> Z -> Prop :=
   fun x z => exists y, R x y /\ S y z.
 
+Lemma rcomp_eq X (R: X -> X -> Prop): rcomp eq R =2 R.
+Proof.
+  split.
+  - intros [x0 [-> H]]. exact H.
+  - intro H. now exists x.
+Qed.
+
 (* Power predicates *)
 
 Require Import Arith.
-Definition pow X R n : X -> X -> Prop := it (rcomp R) n eq.
+
+(* TODO: can be removed if https://github.com/coq/coq/pull/17013 is merged *)
+Lemma iter_add p q (A:Type) (f:A -> A) (x:A):
+  Nat.iter (p+q) f x = Nat.iter p f (Nat.iter q f x).
+Proof.
+  induction p as [|p IHp].
+  - reflexivity.
+  - simpl. now rewrite IHp.
+Qed.
+
+Definition pow X n R : X -> X -> Prop := Nat.iter n (rcomp R) eq.
+
+Lemma pow_add X p q (R: X -> X -> Prop): pow (p + q) R =2 rcomp (pow p R) (pow q R).
+Proof.
+induction p.
+- symmetry. apply rcomp_eq.
+Abort.
 
 Definition functional {X Y} (R: X -> Y -> Prop) := forall x y1 y2, R x y1 -> R x y2 -> y1 = y2.
-Definition terminal {X Y} (R: X -> Y -> Prop) x:= forall y, ~ R x y.
+Definition terminal {X Y} (R: X -> Y -> Prop) x := forall y, ~ R x y.
 
 Section FixX.
   Variable X : Type.
-  Implicit Types R S : X -> X -> Prop.
+  Implicit Types R S : relation X.
   Implicit Types x y z : X.
 
-  Definition reflexive R := forall x, R x x.
-  Definition symmetric R := forall x y, R x y -> R y x.
-  Definition transitive R := forall x y z, R x y -> R y z -> R x z.
-
-
-
   (* Reflexive transitive closure *)
+  Notation star := clos_refl_trans.
 
-  Inductive star R : X -> X -> Prop :=
-  | starR x : star R x x
-  | starC x y z : R x y -> star R y z -> star R x z.
+  Arguments star {A}.
+  Arguments reflexive {A}.
+  Arguments symmetric {A}.
+  Arguments transitive {A}.
 
   Definition evaluates R x y := star R x y /\ terminal R y.
 
   (* Making first argument a non-uniform parameter doesn't simplify the induction principle. *)
 
-  Lemma star_simpl_ind R (p : X -> Prop) y :
-    p y ->
-    (forall x x', R x x' -> star R x' y -> p x' -> p x) -> 
-    forall x, star R x y -> p x.
-  Proof.
-    intros A B. induction 1; eauto.
-  Qed.
+  (* Lemma star_simpl_ind R (p : X -> Prop) *)
+  (* use clos_refl_trans_ind_right instead *)
 
-  Lemma star_trans R:
-    transitive (star R).
-  Proof.
-    induction 1; eauto using star.
-  Qed.
+  (* Lemma star_trans *)
+  (* use rt_trans *)
 
-  Lemma R_star R: R <=2 star R.
-  Proof.
-    eauto using star.
-  Qed.
+  (* Lemma R_star *)
+  (* use apply rt_step. *)
 
   Instance star_PO R: PreOrder (star R).
   Proof.
-    constructor;repeat intro;try eapply star_trans;  now eauto using star.
+    constructor.
+    - unfold Reflexive. apply rt_refl.
+    - unfold Transitive. apply rt_trans.
   Qed.
-  
-  (* Power characterization *)
 
+  (* Power characterization *)
   Lemma star_pow R x y :
-    star R x y <-> exists n, pow R n x y.
+    star R x y <-> exists n, pow n R x y.
   Proof.
     split; intros A.
-    - induction A as [|x x' y B _ [n IH]].
-      + exists 0. reflexivity.
-               + exists (S n), x'. auto.
-               - destruct A as [n A].
-                 revert x A. induction n; intros x A.
-                 + destruct A. constructor.
-                 + destruct A as [x' [A B]]. econstructor; eauto.
-  Qed.
+    - induction A as [| | x y z H1 [n1 R1] H2 [n2 R2]].
+      + now exists 1, y.
+      + now exists 0.
+      + exists (n2 + n1).
+  Abort.
 
   Lemma pow_star R x y n:
     pow R n x y -> star R x y.
@@ -197,7 +205,7 @@ Section FixX.
 
   (* Uniform confluence and parametrized confluence *)
 
-  Definition uniform_confluent (R : X -> X -> Prop ) := forall s t1 t2, R s t1 -> R s t2 -> t1 = t2 \/ exists u, R t1 u /\ R t2 u.
+  Definition uniform_confluent (R : X -> X -> Prop ) := forall s t1 t2, R s t1 -> R s t2 -> t1 = t2 \/ joinable R t1 t2.
 
   Lemma functional_uc R :
     functional R -> uniform_confluent R.
